@@ -25,6 +25,11 @@ requirements = [
     "uvicorn>=0.20.0",
 ]
 
+optional_requirements = {
+    "rich": ["rich>=13.0.0"],
+    "monitoring": ["psutil>=5.0.0"],
+}
+
 setup(
     name="eeveon",
     version=version.get("__version__", "0.2.0"),
@@ -63,6 +68,9 @@ setup(
     python_requires=">=3.6",
     install_requires=requirements,
     extras_require={
+        "premium": optional_requirements["rich"] + optional_requirements["monitoring"],
+        "rich": optional_requirements["rich"],
+        "monitoring": optional_requirements["monitoring"],
         "dev": [
             "black>=22.0.0",
             "isort>=5.0.0",
