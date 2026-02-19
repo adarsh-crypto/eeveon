@@ -889,18 +889,18 @@ def execute_ai_action(tool_call, approved=False):
 def ai_assist(args):
     """Parse a natural language request into a validated tool call."""
     if not verify_deployer():
-        return
+        return 1
 
     request = " ".join(args.request).strip() if args.request else ""
     if not request:
         log("Usage: ee-deploy ai \"<request>\"", "ERROR")
-        return
+        return 2
 
     try:
         from .ai import run_nl_request
     except Exception as exc:
         log(f"AI module unavailable: {exc}", "ERROR")
-        return
+        return 1
 
     result = run_nl_request(
         request,
@@ -913,32 +913,45 @@ def ai_assist(args):
 
     if not result["ok"]:
         log(f"AI response failed validation: {result['error']}", "ERROR")
+        log_ai_event(
+            "ai_assist_failed",
+            status="failed",
+            actor=os.getenv("USER"),
+            detail=result["error"],
+        )
         if args.raw:
             print(result["raw"])
-        return
+        return 1
 
     if args.raw:
         print(result["raw"])
     else:
         print(json.dumps(result["data"], indent=2))
     log(f"AI response validated in {result['latency_s']:.2f}s", "SUCCESS")
+    return 0
 
 
 def ai_request(args):
     """Create a validated AI request and optionally execute."""
     if not verify_deployer():
-        return
+        return 1
 
     request = " ".join(args.request).strip() if args.request else ""
     if not request:
         log("Usage: ee-deploy ai-request \"<request>\"", "ERROR")
-        return
+        return 2
 
     try:
         from .ai import run_nl_request
     except Exception as exc:
         log(f"AI module unavailable: {exc}", "ERROR")
-        return
+        log_ai_event(
+            "ai_request_failed",
+            status="failed",
+            actor=os.getenv("USER"),
+            detail=f"ai_module_unavailable:{exc}",
+        )
+        return 1
 
     result = run_nl_request(
         request,
@@ -951,9 +964,15 @@ def ai_request(args):
 
     if not result["ok"]:
         log(f"AI response failed validation: {result['error']}", "ERROR")
+        log_ai_event(
+            "ai_request_failed",
+            status="failed",
+            actor=os.getenv("USER"),
+            detail=result["error"],
+        )
         if args.raw:
             print(result["raw"])
-        return
+        return 1
 
     requests = load_ai_requests()
     request_id = f"ai-{secrets.token_hex(4)}"
@@ -1016,6 +1035,9 @@ def ai_request(args):
         print(result["raw"])
     else:
         print(json.dumps(result["data"], indent=2))
+    if auto_execute and not result["data"]["safety"].get("requires_confirmation") and not ok:
+        return 1
+    return 0
 
 
 def ai_list(args):
@@ -1516,10 +1538,13 @@ Examples:
     
     if not args.command:
         parser.print_help()
-        return
-    
-    args.func(args)
+        return 0
+
+    result = args.func(args)
+    if isinstance(result, int):
+        return result
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
